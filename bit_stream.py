@@ -1,17 +1,17 @@
 import logging
-import sys
 from enum import Enum
-import binascii
+import struct
+import sys
 
 class OpenMode(Enum):
     WRITE = 0
     READ = 1
 
+
 class BitStream(object):
     """
         Bit-level write and read operations to a file
     """
-
     __file_object = None
     __byte_buffer = 0
     __idx = 0
@@ -22,7 +22,9 @@ class BitStream(object):
     __file_buffer = None
     __current_byte_position = 0
 
-    def __init__(self, file_path: str, open_mode: OpenMode):
+    __padding_with_zeros = True
+
+    def __init__(self, file_path: str, open_mode: OpenMode, padding_with_zeros=True):
         """
             Constructor of BitStream. Note: logging level should be set using the appropriate cmd flag (Python3 logging
         --log=INFO/DEBUG/etc)
@@ -33,6 +35,8 @@ class BitStream(object):
         self.__logger = logging.getLogger(__name__)
         self.__open_mode = open_mode
         rwb = None
+        self.__current_byte_position = 0
+        self.__padding_with_zeros = padding_with_zeros
 
         if open_mode == OpenMode.WRITE:
             rwb = 'wb'
@@ -47,7 +51,11 @@ class BitStream(object):
 
         if open_mode == OpenMode.READ:
             self.__init_read_buffer()
+
         self.__logger.debug('BitStream initialized with file {} and mode {}'.format(file_path, open_mode))
+
+    def set_padding_mode(self, with_zeros):
+        self.__padding_with_zeros = with_zeros
 
     def __init_read_buffer(self):
         """
@@ -55,10 +63,9 @@ class BitStream(object):
         :return:
         """
         self.__file_buffer = self.__file_object.read()
-        # print(bin(int.from_bytes(self.__file_buffer, sys.byteorder)))
-        # print(binascii.hexlify(self.__file_buffer))
+
         self.__file_object.close()
-        self.__read_byte()
+        # self.__read_byte()
 
     def flush(self):
         """
@@ -92,10 +99,25 @@ class BitStream(object):
         elif self.__idx < 8:
             bitwise_length = 8 - self.__idx
             self.__byte_buffer = self.__byte_buffer << bitwise_length
+
+            if not self.__padding_with_zeros:
+                mask = 0xFF >> self.__idx
+                self.__byte_buffer = self.__byte_buffer | mask
+                self.__logger.debug('Padded with {} ones'.format(bitwise_length))
+            else:
+                self.__logger.debug('Padded with {} zeroes'.format(bitwise_length))
+
+            # print('IDX:', self.__idx)
+            # print('BUF:', bin(self.__byte_buffer))
+            # self.__byte_buffer = self.__byte_buffer | (~self.__byte_buffer)
+
+            # print('BUF:', bin(self.__byte_buffer))
+
             self.__file_object.write(self.__byte_buffer.to_bytes(1, byteorder='big'))
 
         else:
-            self.__logger.debug('__write_byte was called in an unexpected state. Current byte buffer size: {}'.format(self.__idx))
+            self.__logger.debug(
+                '__write_byte was called in an unexpected state. Current byte buffer size: {}'.format(self.__idx))
 
         self.__idx = 0
 
@@ -149,7 +171,6 @@ class BitStream(object):
             return False
 
         self.__byte_buffer = self.__file_buffer[self.__current_byte_position]
-        # print(binascii.hexlify(self.__file_buffer[self.__current_byte_position]))
         self.__current_byte_position = self.__current_byte_position + 1
         self.__logger.debug('Read one byte from file buffer')
         return True
@@ -170,24 +191,35 @@ class BitStream(object):
             if not self.__read_byte():
                 return -1
 
-        mask = 2**(7 - self.__idx)
+        if self.__byte_buffer == None:
+            return -1
+
+        mask = 2 ** (7 - self.__idx)
         bit = self.__byte_buffer & mask
 
         self.__idx = self.__idx + 1
         return 1 if bit != 0 else 0
 
-    def read_n_bits(self, num_of_bits: int) -> [int]:
+    def read_n_bits(self, num_of_bits: int) -> str:
         """
             Reads n bits from the sequence
         :param num_of_bits:
-        :return: bit sequence represented as a list of integers (composed of 0's and 1s, obviously)
+        :return: bit sequence represented as a string
         """
-        lst = []
+        if self.__current_byte_position >= len(self.__file_buffer) and self.__byte_buffer is None:
+            return -1
+
+        # lst = []
+        bit_sequence_str = ''
 
         for i in range(0, num_of_bits):
-            lst.append(self.read_bit())
+            bit = self.read_bit()
 
-        return lst
+            if bit == -1:
+                return bit_sequence_str
+            bit_sequence_str = bit_sequence_str + str(bit)
+
+        return bit_sequence_str
 
     def close(self):
         """
@@ -198,3 +230,67 @@ class BitStream(object):
             self.flush()
 
         self.__file_object.close()
+
+    def read_int(self, n_bytes):
+        """
+
+        :return:
+        """
+        if self.__open_mode != OpenMode.READ:
+            self.__logger.critical('OpenMode is not READ. readint not performed.')
+            return
+
+        sequence = []
+        for x in range(0, n_bytes):
+            if not self.__read_byte():
+                return None
+
+            sequence.append(self.__byte_buffer)
+
+        # Advance to next byte since everything from the current one was consumed
+        self.__idx += 8
+
+        return int.from_bytes(sequence, byteorder='big')
+
+    def read_signed_int(self, n_bytes):
+        """
+
+        :return:
+        """
+        if self.__open_mode != OpenMode.READ:
+            self.__logger.critical('OpenMode is not READ. readint not performed.')
+            return
+
+        if not self.__read_byte():
+            return None
+
+        # Advance to next byte since everything from the current one was consumed
+        self.__idx += 8
+
+        print('Content:', self.__byte_buffer)
+        t = struct.unpack('b', self.__byte_buffer.to_bytes(1, sys.byteorder))[0]
+        print('t: ', type(t))
+        return t
+
+    def write_int(self, number, n_bytes):
+        """
+        :type number: integer value that will be written using 4 bytes and system endianness
+        :return:
+        """
+        if self.__open_mode != OpenMode.WRITE:
+            self.__logger.critical('OpenMode is not WRITE. write_int not performed.')
+            return
+
+        # self.__file_object.write(struct.pack('b', number))
+        self.__file_object.write(number.to_bytes(n_bytes, byteorder='big'))
+
+    def write_signed_int(self, number):
+        """
+        :type number: integer value that will be written using 4 bytes and system endianness
+        :return:
+        """
+        if self.__open_mode != OpenMode.WRITE:
+            self.__logger.critical('OpenMode is not WRITE. write_int not performed.')
+            return
+
+        self.__file_object.write(struct.pack('b', number))
