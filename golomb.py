@@ -49,7 +49,7 @@ class GolombEncoder(object):
         # Write header to output file. TODO: write header specification
         # self.__output_file.write_int(m, 4)
         self.write_header(m)
-
+        print(m)
         i = self.__input_file.read_int(1)
         counter = 0.0
 
@@ -66,14 +66,14 @@ class GolombEncoder(object):
         self.__output_file.close()
 
     def golomb_encode(self, input, m):
-        # print('Before:', input)
+        #print('Before:', input)
         if input > 0:
             input = input * 2
 
         elif input < 0:
             input = (input * -2) - 1
 
-        # print('After:', input)
+        #print('After:', input)
         b = int(math.ceil(math.log(m, 2)))
         # calculation of quotient
         q = int(math.floor(input / m))
@@ -96,7 +96,7 @@ class GolombEncoder(object):
             using_bits = b - 1
             binary_representation_with_fixed_len = ("{0:0" + str(using_bits) + "b}").format(r)
 
-            # print('BIN REPR:', str_repr  + binary_representation_with_fixed_len)
+            #print('BIN REPR:', str_repr  + binary_representation_with_fixed_len)
             for c in binary_representation_with_fixed_len:
                 self.__output_file.write_bit(int(c))
 
@@ -107,7 +107,7 @@ class GolombEncoder(object):
             x = int(r + math.pow(2, b) - m)
 
             binary_representation_with_fixed_len = ("{0:0" + str(using_bits) + "b}").format(x)
-            # print('BIN REPR:', str_repr + binary_representation_with_fixed_len)
+            #print('BIN REPR:', str_repr + binary_representation_with_fixed_len)
 
             for c in binary_representation_with_fixed_len:
                 self.__output_file.write_bit(int(c))

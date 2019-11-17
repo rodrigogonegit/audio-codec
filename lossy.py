@@ -4,7 +4,7 @@ from golomb import GolombEncoder
 import wave
 
 
-class PredictiveCoding(object):
+class Lossy(object):   
     __residual = []
     __encoded = ''
     __list_of_integers = []
@@ -13,7 +13,7 @@ class PredictiveCoding(object):
     __nchannels=2
     __sampwidth=2
     __framerate=44100
-    __nframes  =911988
+    __nframes  =588588
     __comptype ='NONE'
     __compname ='not compressed'
 
@@ -76,7 +76,7 @@ class PredictiveCoding(object):
         f.close()
         # print('UInts read from {}:'.format(self.__input_file_path), self.__list_of_integers)
 
-    def encode(self, m_golomb_factor, report_progress_callback=None):
+    def encode(self, m_golomb_factor,q_predict_factor, report_progress_callback=None):
         """
         :param data:
         :param predictor:
@@ -86,19 +86,34 @@ class PredictiveCoding(object):
         o.set_padding_mode(False)
 
         o.write_header(m_golomb_factor)
-        o.golomb_encode(self.__list_of_integers[0], m_golomb_factor)
+        
+        #ToDo: ainda não aceita isto
+        #o.write_header(q_predict_factor)
+
+        
+
+        tmp = []
+        result_to_code = int(self.__list_of_integers[0]/q_predict_factor)
+        tmp.append(result_to_code*q_predict_factor)
+        o.golomb_encode(result_to_code, m_golomb_factor)
+        
         for i in range(1, len(self.__list_of_integers)):
             #print(i)
             if report_progress_callback is not None:
                 report_progress_callback(i / len(self.__list_of_integers) * 100.0)
-
-            o.golomb_encode(self.__list_of_integers[i] - self.__list_of_integers[i - 1], m_golomb_factor)
+            
+            result_to_code = int((self.__list_of_integers[i] - tmp[i - 1])/q_predict_factor)
+            tmp.append(tmp[i-1]+(result_to_code*q_predict_factor))
+            o.golomb_encode(result_to_code, m_golomb_factor)
+            
+            
             # if i < 20:
             #     print(self.__list_of_integers[i] - self.__list_of_integers[i - 1], ', ', end ='')
 
         o.close()
 
-    def decode(self, report_progress_callback=None):
+
+    def decode(self, q_predict_factor, report_progress_callback=None):
         """
 
         :return:
@@ -106,21 +121,23 @@ class PredictiveCoding(object):
         o = GolombEncoder(self.__input_file_path, self.__output_file_path)
         int_list = o.decode(returnList=True)
         o.close()
-
         #todo: not wel done 
         output = wave.open(self.__output_file_path, 'wb')
         print(self.__nchannels)
         output.setparams((self.__nchannels, self.__sampwidth, self.__framerate, self.__nframes, self.__comptype, self.__compname))
         
-        
         step = 0
         counter = 0 # refactor
+        int_list = [x*q_predict_factor for x in int_list]
         for i in int_list:
             if report_progress_callback is not None:
                 report_progress_callback(counter/len(int_list)*100.0)
 
             step = step + i
             counter += 1
-            #print('step', step)
             output.writeframes(step.to_bytes(4,byteorder="little",signed="True"))
             # output.write(bytes(step))
+
+
+
+

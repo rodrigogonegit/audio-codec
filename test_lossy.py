@@ -3,7 +3,7 @@ import hashlib
 import os
 
 from golomb import GolombEncoder
-from predictive import PredictiveCoding
+from lossy import Lossy
 
 parser = argparse.ArgumentParser()
 parser.add_argument('operation', choices=['enc', 'dec'], help='"enc" for encoding "dec" for decoding')
@@ -23,13 +23,13 @@ def main():
     print('Decoded output file:\t', args.output_file + '_decoded')
 
     print('Encoding...')    
-    p = PredictiveCoding(args.input_file, args.output_file + "_encoded")
-    p.encode(args.m_param, report_progress_callback=callback_progress)
+    p = Lossy(args.input_file, args.output_file + "_encoded")
+    p.encode(args.m_param,6000000000000, report_progress_callback=callback_progress)
     print('')
 
     print('Decodind...')
-    d = PredictiveCoding(args.output_file + "_encoded", args.output_file + '_decoded')
-    d.decode(report_progress_callback=callback_progress)
+    d = Lossy(args.output_file + "_encoded", args.output_file + '_decoded')
+    d.decode(6000000000000,report_progress_callback=callback_progress)
     print('')
     enc_file_size = os.stat(args.output_file + '_encoded').st_size
 
