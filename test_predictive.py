@@ -28,7 +28,8 @@ def main():
     print('')
 
     print('Decodind...')
-    d = PredictiveCoding(args.output_file + "_encoded", args.output_file + '_decoded')
+    d = PredictiveCoding(args.output_file + "_encoded", args.output_file + '_decoded.wav')
+    d.setwav(args.input_file)
     d.decode(report_progress_callback=callback_progress)
     print('')
     enc_file_size = os.stat(args.output_file + '_encoded').st_size

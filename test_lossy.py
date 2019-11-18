@@ -8,6 +8,7 @@ from lossy import Lossy
 parser = argparse.ArgumentParser()
 parser.add_argument('operation', choices=['enc', 'dec'], help='"enc" for encoding "dec" for decoding')
 parser.add_argument('--m_param', type=int, help='the m value parameter to be used')
+parser.add_argument('--q_param', type=int, help='the q value parameter to be used')
 parser.add_argument('input_file', help='the input file to be processed')
 parser.add_argument('output_file', help='the resulting file')
 args = parser.parse_args()
@@ -24,12 +25,13 @@ def main():
 
     print('Encoding...')    
     p = Lossy(args.input_file, args.output_file + "_encoded")
-    p.encode(args.m_param,6000000000000, report_progress_callback=callback_progress)
+    p.encode(args.m_param,args.q_param, report_progress_callback=callback_progress)
     print('')
 
     print('Decodind...')
     d = Lossy(args.output_file + "_encoded", args.output_file + '_decoded')
-    d.decode(6000000000000,report_progress_callback=callback_progress)
+    d.setwav(args.input_file)
+    d.decode(args.q_param,report_progress_callback=callback_progress)
     print('')
     enc_file_size = os.stat(args.output_file + '_encoded').st_size
 

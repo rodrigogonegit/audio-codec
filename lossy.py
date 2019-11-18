@@ -1,5 +1,5 @@
 import struct
-
+import sys
 from golomb import GolombEncoder
 import wave
 
@@ -7,7 +7,8 @@ import wave
 class Lossy(object):   
     __residual = []
     __encoded = ''
-    __list_of_integers = []
+    __list_of_integers_channel1 = []
+    __list_of_integers_channel2 = []
     __input_file_path = None
     __output_file_path = None
     __nchannels=2
@@ -59,9 +60,14 @@ class Lossy(object):
             # self.__list_of_integers.append(compname)
             # Open target file with same params (conversion of channel or similar would be here)
             data = file.readframes(1)
-            print("Type: ",type(data))
+            #print("Type: ",type(data))
             while data != b'':
-                self.__list_of_integers.append((int.from_bytes(data,byteorder="little",signed=True)))
+                self.__list_of_integers_channel1.append((int.from_bytes(data[0:self.__nchannels],byteorder="little",signed=True)))
+                self.__list_of_integers_channel2.append((int.from_bytes(data[self.__nchannels:],byteorder="little",signed=True)))
+                # print("channnel 1: ",(int.from_bytes(data[0:self.__nchannels],byteorder="little",signed=True)) )
+                # print("channel 2: ", (int.from_bytes(data[self.__nchannels:],byteorder="little",signed=True)))
+
+                
                 #print(int.from_bytes(data,byteorder="big",signed=True))
                 data = file.readframes(1)
 
@@ -70,7 +76,7 @@ class Lossy(object):
         byte = f.read(1)
 
         while byte != b'':
-            self.__list_of_integers.append(struct.unpack('b', byte)[0])
+            self.__list_of_integers_channel1.append(struct.unpack('b', byte)[0])
             byte = f.read(1)
 
         f.close()
@@ -92,26 +98,44 @@ class Lossy(object):
 
         
 
-        tmp = []
-        result_to_code = int(self.__list_of_integers[0]/q_predict_factor)
-        tmp.append(result_to_code*q_predict_factor)
-        o.golomb_encode(result_to_code, m_golomb_factor)
+        tmp_channel1 = []
+        tmp_channel2 = []
+        result_to_code_channel1 = int(self.__list_of_integers_channel1[0]/q_predict_factor)
+        tmp_channel1.append(result_to_code_channel1*q_predict_factor)
+        o.golomb_encode(result_to_code_channel1, m_golomb_factor)
+
+        result_to_code_channel2 = int(self.__list_of_integers_channel2[0]/q_predict_factor)
+        tmp_channel2.append(result_to_code_channel2*q_predict_factor)
+        o.golomb_encode(result_to_code_channel2, m_golomb_factor)
         
-        for i in range(1, len(self.__list_of_integers)):
+        for i in range(1, len(self.__list_of_integers_channel1)):
             #print(i)
             if report_progress_callback is not None:
-                report_progress_callback(i / len(self.__list_of_integers) * 100.0)
+                report_progress_callback(i / len(self.__list_of_integers_channel1) * 100.0)
             
-            result_to_code = int((self.__list_of_integers[i] - tmp[i - 1])/q_predict_factor)
-            tmp.append(tmp[i-1]+(result_to_code*q_predict_factor))
-            o.golomb_encode(result_to_code, m_golomb_factor)
+            result_to_code_channel1 = int((self.__list_of_integers_channel1[i] - tmp_channel1[i - 1])/q_predict_factor)
+            tmp_channel1.append(tmp_channel1[i-1]+(result_to_code_channel1*q_predict_factor))
+            o.golomb_encode(result_to_code_channel1, m_golomb_factor)
             
-            
+            result_to_code_channel2 = int((self.__list_of_integers_channel2[i] - tmp_channel2[i - 1])/q_predict_factor)
+            tmp_channel2.append(tmp_channel2[i-1]+(result_to_code_channel2*q_predict_factor))
+            o.golomb_encode(result_to_code_channel2, m_golomb_factor)
+
+
             # if i < 20:
             #     print(self.__list_of_integers[i] - self.__list_of_integers[i - 1], ', ', end ='')
 
         o.close()
 
+
+    def setwav(self,input):
+        with wave.open(input, 'rb') as file:
+            # Read input file params
+            self.__nchannels, self.__sampwidth, self.__framerate, self.__nframes, self.__comptype, self.__compname =  file.getparams()
+
+            bit_depth = self.__sampwidth/self.__nchannels*8
+
+        
 
     def decode(self, q_predict_factor, report_progress_callback=None):
         """
@@ -120,22 +144,34 @@ class Lossy(object):
         """
         o = GolombEncoder(self.__input_file_path, self.__output_file_path)
         int_list = o.decode(returnList=True)
+    
+        
         o.close()
-        #todo: not wel done 
         output = wave.open(self.__output_file_path, 'wb')
-        print(self.__nchannels)
+        #print(self.__nchannels)
         output.setparams((self.__nchannels, self.__sampwidth, self.__framerate, self.__nframes, self.__comptype, self.__compname))
         
-        step = 0
-        counter = 0 # refactor
         int_list = [x*q_predict_factor for x in int_list]
-        for i in int_list:
+        int_list_channel1 = int_list[::2]
+        int_list_channel2 = int_list[1::2]
+
+        step_channel1 = 0
+        step_channel2 = 0
+    
+        counter = 0 # refactor
+        for i in range(0,len(int_list_channel1)):
             if report_progress_callback is not None:
                 report_progress_callback(counter/len(int_list)*100.0)
 
-            step = step + i
-            counter += 1
-            output.writeframes(step.to_bytes(4,byteorder="little",signed="True"))
+
+            step_channel1 = step_channel1 + int_list_channel1[i]
+            step_channel2 = step_channel2 + int_list_channel2[i]
+            bytes_channel1 = step_channel1.to_bytes(2,byteorder="little",signed="True")
+            bytes_channel2 = step_channel2.to_bytes(2,byteorder="little",signed="True")
+            bytes_to_write = bytes_channel1 + bytes_channel2
+            
+            counter += 1            
+            output.writeframes(bytes_to_write)
             # output.write(bytes(step))
 
 
